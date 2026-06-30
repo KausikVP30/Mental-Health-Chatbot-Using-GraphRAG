@@ -171,16 +171,19 @@ def main():
 
     create_sample_data()
 
-    pipeline = RAGPipeline(use_mock_generator=True)
+    pipeline = RAGPipeline(generator_type="ollama")
 
-    print("Building indexes...")
-    pipeline.build_indexes()
+    # print("Building indexes...")
+    # pipeline.build_indexes()
 
-    print("Ingesting user data...")
-    pipeline.ingest_user_data("patient_001")
+    # print("Ingesting user data...")
+    # pipeline.ingest_user_data("patient_001")
 
-    print("Ingesting clinician data...")
-    pipeline.ingest_clinician_data("clinician_001")
+    # print("Ingesting clinician data...")
+    # pipeline.ingest_clinician_data("clinician_001")
+
+    print("Initializing pipeline...")
+    pipeline.initialize()
 
     print("\n" + "="*60)
     print("SELECT MODE")

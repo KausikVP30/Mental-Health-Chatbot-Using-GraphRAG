@@ -12,7 +12,10 @@ from src.chunking.chunker import ParentChildChunker
 from src.embeddings.embedder import get_embedder
 from src.ingestion.curated_kb import CuratedKBIngestion
 from src.ingestion.user_content import UserContentIngestion
-
+from src.query_processing.processor import QueryProcessor
+from src.graph.graph_manager import GraphManager
+from src.graph.graph_builder import GraphBuilder
+from src.graph.graph_retriever import GraphRetriever
 
 
 
@@ -24,19 +27,53 @@ class PipelineResult:
     role: str
     user_id: str
 
+    confidence: Optional[float] = None
+    source: Optional[str] = None
+
 
 class RAGPipeline:
-    def __init__(self, use_mock_generator: bool = False):
+    def __init__(self, generator_type: str = "ollama"):
         self.vector_store_manager = VectorStoreManager()
         self.patient_retriever = PatientRetriever(self.vector_store_manager)
         self.clinician_retriever = ClinicianRetriever(self.vector_store_manager)
-        self.reranker = get_reranker("lightweight")
+        self.reranker = get_reranker(
+            config.get("reranker.type", "lightweight")
+        )
         #self.generator = get_generator("mock" if use_mock_generator else "local")
-        self.generator = get_generator("ollama")
+        self.generator = get_generator(generator_type)
+        self.query_processor = QueryProcessor()
+        self.graph_manager = GraphManager()
+        self.graph_retriever = GraphRetriever()       
         self.chunker = ParentChildChunker()
         self.sbert_embedder = get_embedder("sbert")
         self.medcpt_embedder = get_embedder("medcpt")
         self._indexes_built = False
+        logger.info(f"Using reranker: {self.reranker.__class__.__name__}")
+
+    def initialize(self):
+        """
+        Initialize the complete RAG pipeline.
+
+        This method should be called exactly once when the
+        application starts.
+        """
+
+        logger.info("Initializing RAG pipeline...")
+
+        self.build_indexes()
+
+        #
+        # Demo data
+        # (Later this will become dynamic ingestion)
+        #
+        self.ingest_user_data("patient_001")
+        self.ingest_clinician_data("clinician_001")
+
+        logger.info("Pipeline initialization complete.")
+
+    @property
+    def ready(self) -> bool:
+        return self._indexes_built
 
     def build_indexes(self, force_rebuild: bool = False):
         if self._indexes_built and not force_rebuild:
@@ -51,6 +88,14 @@ class RAGPipeline:
 
         if curated_docs:
             curated_chunks = self.chunker.chunk_documents(curated_docs)
+
+            global_builder = GraphBuilder(
+                self.graph_manager.get_global_graph()
+            )
+
+            global_builder.build_from_chunks(
+                curated_chunks
+            )
 
             # Split chunks into SBERT vs MedCPT
             sbert_chunks = []
@@ -95,6 +140,15 @@ class RAGPipeline:
 
         if docs:
             chunks = self.chunker.chunk_documents(docs)
+            
+            patient_builder = GraphBuilder(
+                self.graph_manager.get_patient_graph(user_id)
+            )
+
+            patient_builder.build_from_chunks(
+                chunks
+            )
+            
             child_chunks = [c for c in chunks if c.metadata.get("chunk_type") == "child"]
             embeddings = self.sbert_embedder.embed([c.text for c in child_chunks])
             store = self.vector_store_manager.get_store(
@@ -111,6 +165,17 @@ class RAGPipeline:
 
         if docs:
             chunks = self.chunker.chunk_documents(docs)
+            
+            clinician_builder = GraphBuilder(
+                self.graph_manager.get_clinician_graph(
+                    clinician_id
+                )
+            )
+
+            clinician_builder.build_from_chunks(
+                chunks
+            )
+            
             child_chunks = [c for c in chunks if c.metadata.get("chunk_type") == "child"]
             embeddings = self.medcpt_embedder.embed([c.text for c in child_chunks])
             store = self.vector_store_manager.get_store(
@@ -123,18 +188,79 @@ class RAGPipeline:
         start_time = time.time()
         top_k = top_k or config.get("retrieval.final_top_k", 5)
 
-        logger.info(f"Processing query: role={role}, user_id={user_id}, query={query[:50]}...")
+        logger.info(
+            f"Processing query: role={role}, user_id={user_id}, query={query[:50]}..."
+        )
+
+        #
+        # Process the query (language detection, translation, etc.)
+        #
+        processed_query = self.query_processor.process(query)
+
+        graphs = self.graph_manager.get_graphs(
+            role,
+            user_id,
+        )
+
+        expanded_entities = self.graph_retriever.expand_query(
+            processed_query.english_query,
+            graphs,
+        )
+
+        expanded_query = processed_query.english_query
+
+        if expanded_entities:
+            expanded_terms = [
+                term
+                for term in expanded_entities
+                if term.lower() != processed_query.english_query.lower()
+            ]
+
+            expanded_query = (
+                processed_query.english_query
+                + " "
+                + " ".join(expanded_terms)
+            )
+
+        logger.info(
+            f"Expanded Query: {expanded_query}"
+        )
 
         if role == "patient":
-            retrieved = self.patient_retriever.retrieve(query, user_id, top_k * 2)
+            retrieved = self.patient_retriever.retrieve(
+                expanded_query,
+                user_id,
+                top_k * 2,
+            )   
         elif role == "clinician":
-            retrieved = self.clinician_retriever.retrieve(query, user_id, top_k * 2)
+            retrieved = self.clinician_retriever.retrieve(
+                expanded_query,
+                user_id,
+                top_k * 2,
+            )
+
         else:
             raise ValueError(f"Unknown role: {role}")
 
-        reranked = self.reranker.rerank(query, retrieved, top_k)
+        reranked = self.reranker.rerank(
+            expanded_query,
+            retrieved,
+            top_k,
+        )
 
-        response = self.generator.generate_with_context(query, reranked, role)
+        response = self.generator.generate_with_context(
+            processed_query.english_query,
+            reranked,
+            role,
+        )
+
+        #
+        # Translate response back to original language
+        #
+        response = self.query_processor.restore_response(
+            response,
+            processed_query,
+        )
 
         latency_ms = (time.time() - start_time) * 1000
 
@@ -147,7 +273,14 @@ class RAGPipeline:
         )
 
     def get_stats(self) -> dict:
+
         return {
+            "pipeline_ready": self.ready,
+            "generator": self.generator.__class__.__name__,
+            "reranker": self.reranker.__class__.__name__,
             "indexes_built": self._indexes_built,
-            "stores": {name: store.get_stats() for name, store in self.vector_store_manager.stores.items()},
+            "stores": {
+                name: store.get_stats()
+                for name, store in self.vector_store_manager.stores.items()
+            },
         }

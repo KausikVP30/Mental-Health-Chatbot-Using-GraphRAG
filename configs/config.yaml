@@ -35,6 +35,10 @@ retrieval:
   final_top_k: 5
   kg_expansion_limit: 10
 
+#Reranking
+reranker:
+  type: "cross_encoder"
+
 # Vector store configuration
 vectorstore:
   index_path: "./indexes"

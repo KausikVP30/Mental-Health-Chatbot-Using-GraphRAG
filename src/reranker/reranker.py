@@ -7,11 +7,20 @@ from src.utils.config import config
 from src.retrieval.retriever import RetrievalResult
 from src.vectorstore.store import VectorRecord
 
+#
+# Global reranker cache
+#
+_RERANKER_CACHE = {}
 
 class CrossEncoderReranker:
     def __init__(self, model_name: str = None, device: str = None, max_length: int = None):
         self.model_name = model_name or config.get("models.reranker.name", "BAAI/bge-reranker-base")
-        self.device = device or config.get("models.reranker.device", "cpu")
+        self.device = ( device or (
+                "cuda"
+                if torch.cuda.is_available()
+                else "cpu"
+            )
+        )
         self.max_length = max_length or config.get("models.reranker.max_length", 512)
         self._model = None
         self._tokenizer = None
@@ -40,7 +49,7 @@ class CrossEncoderReranker:
             return_tensors="pt",
         ).to(self.device)
 
-        with torch.no_grad():
+        with torch.inference_mode():
             scores = self._model(**inputs).logits.squeeze(-1).cpu().numpy()
 
         scored_results = list(zip(results, scores))
@@ -89,9 +98,18 @@ class LightweightReranker:
 
 
 def get_reranker(reranker_type: str = "cross_encoder"):
-    if reranker_type == "cross_encoder":
-        return CrossEncoderReranker()
-    elif reranker_type == "lightweight":
-        return LightweightReranker()
-    else:
-        raise ValueError(f"Unknown reranker type: {reranker_type}")
+
+    global _RERANKER_CACHE
+
+    if reranker_type not in _RERANKER_CACHE:
+
+        if reranker_type == "cross_encoder":
+            _RERANKER_CACHE[reranker_type] = CrossEncoderReranker()
+
+        elif reranker_type == "lightweight":
+            _RERANKER_CACHE[reranker_type] = LightweightReranker()
+
+        else:
+            raise ValueError(f"Unknown reranker type: {reranker_type}")
+
+    return _RERANKER_CACHE[reranker_type]

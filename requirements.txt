@@ -1,5 +1,5 @@
 # Core ML libraries
-torch>=2.0.0
+torch>=2.2.0
 transformers>=4.35.0
 sentence-transformers>=2.2.0
 accelerate>=0.24.0
@@ -30,3 +30,19 @@ loguru>=0.7.0
 tokenizers>=0.15.0
 
 requests
+
+#backend wrapper
+
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+python-multipart>=0.0.9
+
+#translation
+
+lingua-language-detector>=2.0.2
+transformers>=4.45.0
+sentencepiece>=0.2.0
+sacremoses>=0.1.1
+safetensors
