@@ -213,17 +213,163 @@ src/
 requirements.txt
 README.md
 ```
-Architecture
-Patient:
-Question → SBERT → Dense Retrieval → Graph (optional) → Reranker → Prompt → Ollama → Answer
-Clinician:
-Query → MedCPT → Clinical Retrieval → Graph Expansion → Cross-Encoder → Prompt → Ollama → Answer
-Models
-Component	Model
-Patient Embedder	sentence-transformers/all-MiniLM-L6-v2
-Clinical Embedder	ncbi/MedCPT-Article-Encoder
-Reranker	BAAI/bge-reranker-base
-Generator	Ollama (llama3)
+# 🏗️ System Architecture
+
+The proposed system follows a modular **5-layer Retrieval-Augmented Generation (RAG)** architecture designed for privacy-preserving mental health assistance. Separate retrieval pipelines are maintained for **patients** and **clinicians**, while both share a curated mental-health knowledge base.
+
+```mermaid
+flowchart LR
+
+A[User Query]
+
+A --> B{Role}
+
+B -->|Patient| C[SBERT Embedding]
+B -->|Clinician| D[MedCPT Embedding]
+
+C --> E[Patient Retriever]
+D --> F[Clinician Retriever]
+
+E --> G[Dense Retrieval]
+E --> H[BM25 Retrieval]
+
+G --> I[RRF Fusion]
+H --> I
+
+F --> J[Dense Clinical Retrieval]
+J --> K[Knowledge Graph Expansion]
+
+I --> L[Reranker]
+K --> L
+
+L --> M[Prompt Builder]
+
+M --> N[Ollama - Llama 3]
+
+N --> O[Grounded Response]
+```
+
+---
+
+# 📚 Layered Architecture
+
+| Layer | Module | Description |
+|--------|--------|-------------|
+| **Layer 1** | Document Ingestion | Parses curated PDFs and user-specific documents into a unified internal representation. |
+| **Layer 2** | Chunking & Embedding | Parent-child chunking followed by SBERT (patient) or MedCPT (clinician) embeddings. |
+| **Layer 3** | Vector Storage | Privacy-isolated FAISS indexes for curated knowledge, patient memory and clinician memory. |
+| **Layer 4** | Retrieval | Role-aware retrieval using Dense Search, BM25, Reciprocal Rank Fusion (RRF), Knowledge Graph Expansion and Cross-Encoder reranking. |
+| **Layer 5** | Generation | Context-aware prompt construction followed by local LLM generation using Ollama (Llama 3). |
+
+---
+
+# 🔀 Retrieval Pipelines
+
+## 👤 Patient Pipeline
+
+```text
+Patient Question
+        │
+        ▼
+ SBERT Embedding
+        │
+        ▼
+ Dense Retrieval ─────┐
+                      │
+ BM25 Retrieval ──────┤
+                      ▼
+        Reciprocal Rank Fusion
+                      │
+                      ▼
+      Lightweight / CrossEncoder
+             Reranking
+                      │
+                      ▼
+      Patient Prompt Builder
+                      │
+                      ▼
+        Ollama (Llama 3)
+                      │
+                      ▼
+     Evidence-Grounded Answer
+```
+
+---
+
+## 👨‍⚕️ Clinician Pipeline
+
+```text
+Clinical Query
+      │
+      ▼
+ MedCPT Embedding
+      │
+      ▼
+ Clinical Dense Retrieval
+      │
+      ▼
+ Knowledge Graph Expansion
+      │
+      ▼
+ CrossEncoder Reranking
+      │
+      ▼
+ Clinical Prompt Builder
+      │
+      ▼
+   Ollama (Llama 3)
+      │
+      ▼
+ Clinical Response
+```
+
+---
+
+# 🔒 Privacy Isolation
+
+The system enforces strict data isolation by maintaining independent FAISS indexes.
+
+```text
+Curated Knowledge Base
+│
+├── curated_kb_sbert.index
+│
+└── curated_kb_medcpt.index
+
+
+Patient Data
+│
+├── user_001_private.index
+├── user_002_private.index
+└── ...
+
+
+Clinician Data
+│
+├── clinician_001_private.index
+├── clinician_002_private.index
+└── ...
+```
+
+No patient embeddings are stored inside clinician indexes, and clinician-specific information is never retrieved for patient queries.
+
+---
+
+# 🧠 Core Components
+
+| Component | Implementation |
+|-----------|----------------|
+| Chunking | Parent-Child Chunking |
+| Dense Retrieval | FAISS |
+| Sparse Retrieval | BM25 |
+| Fusion | Reciprocal Rank Fusion (RRF) |
+| Graph Retrieval | Knowledge Graph Expansion |
+| Patient Embedding | SBERT |
+| Clinical Embedding | MedCPT |
+| Reranker | BAAI/bge-reranker-base |
+| Generator | Ollama (Llama 3) |
+| Framework | PyTorch + Hugging Face |
+
 The Hugging Face models download automatically on first use. Install the generator separately:
 ```bash
 ollama pull llama3
