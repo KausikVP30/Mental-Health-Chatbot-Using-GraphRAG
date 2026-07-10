@@ -189,8 +189,14 @@ MIT -->
 
 
 
-Role-Aware Graph-Enhanced Retrieval-Augmented Generation for Mental Health Assistance
+# 🧠 MindBridge: Role-Aware Graph-Enhanced Retrieval-Augmented Generation for Mental Health Assistance
 > **EMNLP Reproducibility Repository**
+
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.x-red)
+![License](https://img.shields.io/badge/License-MIT-green)
+![EMNLP](https://img.shields.io/badge/EMNLP-2026-orange)
+
 Overview
 This repository contains a modular Retrieval-Augmented Generation (RAG) system for mental-health assistance featuring role-aware retrieval, graph-enhanced retrieval, privacy-isolated vector stores, dual embedding models, Cross-Encoder reranking, and local LLM generation using Ollama.
 Key Features
@@ -325,6 +331,18 @@ Clinical Query
 
 ---
 
+## Multilingual Support
+
+MindBridge supports multilingual user queries through an integrated preprocessing pipeline.
+
+1. Detect the input language using Lingua.
+2. Translate non-English queries to English using facebook/nllb-200-distilled-600M.
+3. Perform GraphRAG retrieval and grounded generation.
+4. Return responses in the configured output language.
+
+This enables retrieval over a unified English knowledge base while allowing users to interact in multiple languages.
+---
+
 # 🔒 Privacy Isolation
 
 The system enforces strict data isolation by maintaining independent FAISS indexes.
@@ -374,6 +392,15 @@ The Hugging Face models download automatically on first use. Install the generat
 ```bash
 ollama pull llama3
 ```
+
+The following Hugging Face models are used by the system and will be cached automatically during the first execution:
+
+- sentence-transformers/all-MiniLM-L6-v2
+- ncbi/MedCPT-Article-Encoder
+- BAAI/bge-reranker-base
+- facebook/nllb-200-distilled-600M
+
+  
 Installation
 ```bash
 git clone <repo>
@@ -382,6 +409,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
 Datasets
 CounselChat (patient evaluation)
 Curated clinician benchmark (corpus-aligned evaluation)
@@ -426,14 +454,6 @@ Verify Ollama:
 ```bash
 ollama ps
 ```
-Citation
-```bibtex
-@inproceedings{yourpaper2026,
-  title={Role-Aware Graph-Enhanced Retrieval-Augmented Generation for Mental Health Assistance},
-  author={Author(s)},
-  booktitle={Proceedings of EMNLP},
-  year={2026}
-}
-```
+
 License
 MIT
