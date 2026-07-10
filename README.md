@@ -195,7 +195,6 @@ MIT -->
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.x-red)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![EMNLP](https://img.shields.io/badge/EMNLP-2026-orange)
 
 Overview
 This repository contains a modular Retrieval-Augmented Generation (RAG) system for mental-health assistance featuring role-aware retrieval, graph-enhanced retrieval, privacy-isolated vector stores, dual embedding models, Cross-Encoder reranking, and local LLM generation using Ollama.
